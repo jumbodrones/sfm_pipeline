@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive walkthrough of the drone photogrammetry pipeline: overlapping photos, feature matching, bundle adjustment, dense cloud, DSM and orthomosaic.">
+<style>html{color-scheme:light dark}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>SfM Pipeline Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: field-instrument console — large dark viewport (the "sensor"), stepper above, readout panel beside */
+:root{
+  --bg:#eaefee; --surface:#ffffff; --ink:#15232a; --muted:#56676e; --line:#cfd9da;
+  --accent:#0b6e7f; --accent-ink:#ffffff; --hot:#d65a0e; --vp:#0e161a; --vp-ink:#dbe6e8;
+  --f-display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0b1114; --surface:#131c20; --ink:#e2eaec; --muted:#93a4aa; --line:#25343a;
+  --accent:#4cc0d1; --accent-ink:#062329; --hot:#ff8b40; --vp:#081013; --vp-ink:#dbe6e8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b1114; --surface:#131c20; --ink:#e2eaec; --muted:#93a4aa; --line:#25343a;
+  --accent:#4cc0d1; --accent-ink:#062329; --hot:#ff8b40; --vp:#081013; --vp-ink:#dbe6e8; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1360px;margin:0 auto;padding-inline:20px;padding-block:22px 40px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 24px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 4px}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,4vw,42px);line-height:1.05;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.lede{margin:6px 0 0;color:var(--muted);max-width:62ch}
+.steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:0;margin:0;list-style:none}
+.steps button{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:9px 12px 10px;border-top:3px solid var(--line);color:var(--muted);transition:color .2s,border-color .2s}
+.steps button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.steps .n{font-family:var(--f-mono);font-size:12px}
+.steps .t{font-family:var(--f-display);font-weight:600;font-size:18px;line-height:1.1}
+.steps button[aria-current="step"]{border-color:var(--hot);color:var(--ink)}
+.steps button.done{border-color:var(--accent)}
+.steps button:hover{color:var(--ink)}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start}
+.viewer{display:flex;flex-direction:column;gap:10px;min-width:0}
+.vp{position:relative;background:var(--vp);border-radius:6px;overflow:hidden}
+#view{display:block;width:100%;aspect-ratio:16/10;touch-action:pan-y;cursor:grab}
+#view.static{cursor:default}
+#view:active{cursor:grabbing}
+.hint{position:absolute;right:10px;top:8px;font-family:var(--f-mono);font-size:11px;color:var(--vp-ink);opacity:.6;pointer-events:none}
+.legend{position:absolute;left:10px;bottom:10px;background:rgba(8,14,16,.72);color:var(--vp-ink);padding:8px 10px;border-radius:4px;font-family:var(--f-mono);font-size:11px;display:flex;flex-direction:column;gap:5px;pointer-events:none;max-width:calc(100% - 20px)}
+.legend .row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.sw{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+.ramp{width:160px;height:10px;border-radius:2px}
+.transport{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.btn{font:500 14px var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;border-radius:4px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.transport .sp{flex:1}
+.check{display:inline-flex;gap:6px;align-items:center;font-size:14px;color:var(--muted);cursor:pointer}
+.thumbs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.thumbs figure{margin:0;display:flex;flex-direction:column;gap:3px;min-width:0}
+.thumbs canvas{width:100%;aspect-ratio:3/2;display:block;background:var(--vp);border-radius:3px}
+.thumbs figcaption{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+aside.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.stno{font-family:var(--f-mono);font-size:12px;color:var(--hot);letter-spacing:.06em;text-transform:uppercase;margin:0}
+aside h2{font-family:var(--f-display);font-weight:700;font-size:26px;line-height:1.1;margin:-6px 0 0;text-wrap:balance}
+.body p{margin:0 0 .6em}
+.body p:last-child{margin:0}
+.body strong{font-weight:600}
+.ctl{display:flex;flex-direction:column;gap:10px}
+.ctl label.range{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:14px}
+.ctl label.range output{font-family:var(--f-mono);font-size:13px;color:var(--accent)}
+.ctl input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{font:500 13px var(--f-body);border:0;background:transparent;color:var(--muted);padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+dl.stats{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0;padding-top:12px;border-top:1px solid var(--line);font-size:14px}
+dl.stats dt{color:var(--muted)}
+dl.stats dd{margin:0;font-family:var(--f-mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+.try{font-size:14px;background:color-mix(in srgb,var(--hot) 9%,transparent);border-left:3px solid var(--hot);padding:9px 12px;border-radius:0 4px 4px 0}
+.try b{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--hot);display:block;margin-bottom:2px}
+.formula{font-family:var(--f-mono);font-size:13px;background:color-mix(in srgb,var(--accent) 10%,transparent);padding:6px 10px;border-radius:4px}
+footer{font-size:13px;color:var(--muted);max-width:90ch}
+.refs{border-top:1px solid var(--line);padding-top:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:18px 32px}
+.refs h2{grid-column:1/-1;font-family:var(--f-display);font-weight:700;font-size:24px;margin:0}
+.refs h3{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:0 0 6px;font-weight:500}
+.refs ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.refs li{padding-left:2px}
+.refs .note{grid-column:1/-1;font-size:13px;color:var(--muted);margin:0;max-width:90ch}
+@media (max-width:980px){.main{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){
+  .wrap{padding-inline:16px}
+  .steps{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .steps button{padding:8px 6px 9px}
+  .steps .t{font-size:15px;overflow-wrap:anywhere}
+  #view{aspect-ratio:4/3}
+  #view.tall{aspect-ratio:3/4}
+  .thumbs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <p class="eyebrow">Drone photogrammetry · interactive lab</p>
+      <h1>From overlapping photos to an orthomosaic</h1>
+      <p class="lede">Follow one survey flight through the Structure-from-Motion pipeline: capture, feature matching, camera alignment, dense reconstruction, surface model and orthomosaic.</p>
+    </div>
+  </header>
+
+  <ol class="steps" id="steps">
+    <li><button data-s="0"><span class="n">01</span><span class="t">Capture</span></button></li>
+    <li><button data-s="1"><span class="n">02</span><span class="t">Match</span></button></li>
+    <li><button data-s="2"><span class="n">03</span><span class="t">Align</span></button></li>
+    <li><button data-s="3"><span class="n">04</span><span class="t">Densify</span></button></li>
+    <li><button data-s="4"><span class="n">05</span><span class="t">Surface</span></button></li>
+    <li><button data-s="5"><span class="n">06</span><span class="t">Orthomosaic</span></button></li>
+  </ol>
+
+  <div class="main">
+    <section class="viewer">
+      <div class="vp">
+        <canvas id="view" aria-label="3D view of the survey site"></canvas>
+        <div class="hint" id="hint">Drag to orbit · scroll to zoom</div>
+        <div class="legend" id="legOverlap" hidden>
+          <div>Photos covering each spot</div>
+          <div class="row" id="legOverlapRow"></div>
+        </div>
+        <div class="legend" id="legDSM" hidden>
+          <div>Elevation (m, local datum)</div>
+          <div class="row"><span id="dsmMin">0</span><canvas class="ramp" id="ramp" width="160" height="10"></canvas><span id="dsmMax">0</span></div>
+        </div>
+      </div>
+      <div class="thumbs" id="thumbs" hidden></div>
+      <div class="transport">
+        <button class="btn" id="prev">← Previous</button>
+        <button class="btn" id="replay">Replay step</button>
+        <button class="btn primary" id="next">Next →</button>
+        <span class="sp"></span>
+        <label class="check"><input type="checkbox" id="auto"> Auto-advance</label>
+      </div>
+    </section>
+
+    <aside class="panel" aria-live="polite">
+      <p class="stno" id="stno">Step 1 of 6</p>
+      <h2 id="sttitle"></h2>
+      <div class="body" id="stbody"></div>
+
+      <div class="ctl" data-for="0">
+        <label class="range">Flight altitude (AGL)<output id="oAlt"></output><input type="range" id="alt" min="25" max="50" step="1" value="35"></label>
+        <label class="range">Front overlap (along a line)<output id="oFront"></output><input type="range" id="front" min="50" max="90" step="5" value="80"></label>
+        <label class="range">Side overlap (between lines)<output id="oSide"></output><input type="range" id="side" min="40" max="85" step="5" value="70"></label>
+        <div class="seg" role="group" aria-label="Ground display">
+          <button id="mFoot" aria-pressed="true">Footprints</button>
+          <button id="mOver" aria-pressed="false">Overlap map</button>
+        </div>
+      </div>
+      <div class="ctl" data-for="1"><div><button class="btn" id="nextTie">Next tie point</button></div></div>
+      <div class="ctl" data-for="3"><label class="check"><input type="checkbox" id="showCams" checked> Show camera positions</label></div>
+      <div class="ctl" data-for="4">
+        <div class="seg" role="group" aria-label="Surface colour">
+          <button id="cElev" aria-pressed="true">Elevation</button>
+          <button id="cRGB" aria-pressed="false">True colour</button>
+        </div>
+      </div>
+      <div class="ctl" data-for="5">
+        <label class="range">Which raw photo<output id="oPhoto"></output><input type="range" id="photo" min="0" max="10" step="1" value="7"></label>
+        <label class="check"><input type="checkbox" id="showSeams"> Show mosaic seamlines</label>
+        <label class="check"><input type="checkbox" id="showFoot" checked> Outline true building footprint</label>
+      </div>
+
+      <dl class="stats" id="stats"></dl>
+      <div class="try" id="try"></div>
+    </aside>
+  </div>
+
+  <section class="refs" aria-labelledby="refsH">
+    <h2 id="refsH">References</h2>
+    <div><h3>SfM for geoscience</h3><ul>
+      <li>Westoby, M.J., Brasington, J., Glasser, N.F., Hambrey, M.J., &amp; Reynolds, J.M. (2012). “Structure-from-Motion” photogrammetry: A low-cost, effective tool for geoscience applications. <i>Geomorphology</i>, 179, 300–314.</li>
+      <li>James, M.R., &amp; Robson, S. (2012). Straightforward reconstruction of 3D surfaces and topography with a camera: Accuracy and geoscience application. <i>Journal of Geophysical Research: Earth Surface</i>, 117.</li>
+    </ul></div>
+    <div><h3>Step 2 · Feature matching</h3><ul>
+      <li>Lowe, D.G. (2004). Distinctive image features from scale-invariant keypoints. <i>International Journal of Computer Vision</i>, 60(2), 91–110.</li>
+    </ul></div>
+    <div><h3>Step 3 · Alignment &amp; bundle adjustment</h3><ul>
+      <li>Snavely, N., Seitz, S.M., &amp; Szeliski, R. (2006). Photo tourism: Exploring photo collections in 3D. <i>ACM Transactions on Graphics</i>, 25(3).</li>
+      <li>Triggs, B., McLauchlan, P., Hartley, R., &amp; Fitzgibbon, A. (2000). Bundle adjustment: A modern synthesis. In <i>Vision Algorithms: Theory and Practice</i>, LNCS 1883. Springer.</li>
+      <li>Schönberger, J.L., &amp; Frahm, J.-M. (2016). Structure-from-Motion revisited. <i>Proceedings of CVPR 2016</i>.</li>
+    </ul></div>
+    <div><h3>Step 4 · Dense reconstruction</h3><ul>
+      <li>Furukawa, Y., &amp; Ponce, J. (2010). Accurate, dense, and robust multiview stereopsis. <i>IEEE Transactions on Pattern Analysis and Machine Intelligence</i>, 32(8).</li>
+    </ul></div>
+    <div><h3>Step 6 · Relief displacement &amp; orthorectification</h3><ul>
+      <li>Wolf, P.R., Dewitt, B.A., &amp; Wilkinson, B.E. (2014). <i>Elements of Photogrammetry with Applications in GIS</i> (4th ed.). McGraw-Hill.</li>
+    </ul></div>
+    <p class="note">Rules of thumb used on this page, not taken from a single source: default overlaps of 80% front and 70% side (in line with the flight-planning guidance published by Pix4D and Agisoft Metashape); at least 5 photos per spot on the overlap map; an RMS reprojection error under about 1 px for a good alignment; and dense clouds of hundreds to thousands of points per m². The example camera matches the published specifications of the DJI Phantom 4 Pro.</p>
+  </section>
+
+  <footer>The site, camera and numbers are simulated for teaching. The example camera is a 1-inch, 20 MP sensor (13.2 × 8.8 mm, 5472 px wide) with an 8.8 mm lens, so each photo covers 1.5 × altitude across track and 1.0 × altitude along track. Point densities here are far lower than a real project so the page runs in any browser.</footer>
+</div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- noise & rng ---------- */
+function hash(i,j){let h=(Math.imul(i|0,374761393)+Math.imul(j|0,668265263))|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return (h>>>0)/4294967296}
+function vnoise(x,y){const i=Math.floor(x),j=Math.floor(y),fx=x-i,fy=y-j,u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy);
+ const a=hash(i,j),b=hash(i+1,j),c=hash(i,j+1),d=hash(i+1,j+1);return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v}
+function rng(seed){return ()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=rng(7);
+function gauss(){let u=0,v=0;while(!u)u=R();while(!v)v=R();return Math.sqrt(-2*Math.log(u))*Math.cos(6.2832*v)}
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const ease=t=>{t=clamp(t,0,1);return 1-Math.pow(1-t,3)};
+
+/* ---------- synthetic site (metres, x east, y north, z up) ---------- */
+const AW=120,AH=90;
+function terrain(x,y){return 1.6*Math.sin(x/22)+1.2*Math.cos(y/17)+4.5*Math.exp(-((x-100)**2+(y-72)**2)/420)+0.6*vnoise(x/8,y/8)}
+const B={x0:50,x1:68,y0:40,y1:52,ym:46,hy:6};
+B.base=terrain(59,46)-0.2; B.top=B.base+9.5; B.eave=B.top-2.8;
+const TREES=[[20,70,3.6,8.5],[14,61,3,7],[30,81,4,9.5],[83,55,3.6,8.5],[89,49,3,7],[40,20,3,6.5],[46,13,3.6,8],[101,19,3,7],[107,28,3.3,7.5],[73,77,3.8,9.5],[62,83,3,7.5],[10,19,3.1,6.5],[93,84,3.4,8],[36,56,2.8,6.5],[112,62,3.2,7.5],[5,40,3,7]].map(t=>({x:t[0],y:t[1],r:t[2],h:t[3],b:terrain(t[0],t[1])}));
+const XR=y=>28+6*Math.sin(y/15);
+function roofZ(x,y){if(x<B.x0||x>B.x1||y<B.y0||y>B.y1)return -1e9;return B.top-(B.top-B.eave)*Math.abs(y-B.ym)/B.hy}
+function treeZ(x,y){let z=-1e9;for(const t of TREES){const d2=((x-t.x)**2+(y-t.y)**2)/(t.r*t.r);if(d2<1){const zz=t.b+t.h*.45+t.h*.55*Math.sqrt(1-d2)+.5*vnoise(x*1.4,y*1.4);if(zz>z)z=zz}}return z}
+function surfK(x,y){const t=terrain(x,y),r=roofZ(x,y),tr=treeZ(x,y);if(r>=t&&r>=tr)return [r,1];if(tr>t)return [tr,2];return [t,0]}
+const surfZ=(x,y)=>surfK(x,y)[0];
+function colorAt(x,y,k){
+ const n=vnoise(x/6,y/6),n2=vnoise(x*.9+50,y*.9);
+ if(k===1){const rid=Math.abs(y-B.ym)<.35;if(rid)return[96,58,50];const row=((Math.abs(y-B.ym))%.6)<.08;return row?[120,62,48]:[150+n2*14,76+n2*8,58]}
+ if(k===2)return[40+n*22,86+n*32,40+n*8];
+ const xr=XR(y),dx=Math.abs(x-xr);
+ if(dx<.14&&(y%6)<3)return[228,196,80];
+ if(dx<3.2)return dx>2.9?[160,160,156]:[88+n2*16,88+n2*16,92+n2*14];
+ if(y>44&&y<48&&x>xr&&x<B.x0)return[124+n2*12,120+n2*12,112];
+ if(x>47&&x<71&&y>27&&y<38.5){if(((x-48.5)%3)<.22&&y>30&&y<36)return[236,236,230];return[66+n2*14,70+n2*14,74+n2*14]}
+ if(x>80&&y<36){return((x-80)%2.4)<1.1?[70+n*22,116+n*26,46]:[132+n2*22,104+n2*16,72]}
+ return[76+n*32+n2*10,116+n*30+n2*8,56+n*12];
+}
+const L=(()=>{const v=[-.5,-.55,.68],m=Math.hypot(...v);return v.map(a=>a/m)})();
+const pack=(r,g,b)=>((255<<24)|((b&255)<<16)|((g&255)<<8)|(r&255))>>>0;
+
+/* dense "true" point set */
+const STEP=.75, GX=Math.floor(AW/STEP)+1, GY=Math.floor(AH/STEP)+1;
+const px=[],py=[],pz=[],pr=[],pg=[],pb=[],pk=[],shadeArr=[];
+const gridK=new Float32Array(GX*GY), gridZ=new Float32Array(GX*GY);
+const gridR=new Float32Array(GX*GY);
+for(let j=0;j<GY;j++)for(let i=0;i<GX;i++){
+ const x=i*STEP+(hash(i,j+99)-.5)*.3, y=j*STEP+(hash(i+99,j)-.5)*.3;
+ const [z,k]=surfK(x,y), c=colorAt(x,y,k), h=.35;
+ const nx=-(surfZ(x+h,y)-surfZ(x-h,y))/(2*h), ny=-(surfZ(x,y+h)-surfZ(x,y-h))/(2*h), nm=Math.hypot(nx,ny,1);
+ const lam=Math.max(0,(nx*L[0]+ny*L[1]+L[2])/nm), s=.5+.62*lam;
+ px.push(x);py.push(y);pz.push(z);pr.push(c[0]*s);pg.push(c[1]*s);pb.push(c[2]*s);pk.push(k);shadeArr.push(s);
+ gridZ[j*GX+i]=z;gridK[j*GX+i]=k;gridR[j*GX+i]=c[0]+c[1]+c[2];
+}
+const NG=px.length;
+/* building walls */
+{const ws=.6, wall=(x,y,nx,ny,top)=>{for(let z=B.base;z<=top;z+=ws){const fl=z-B.base;const win=(fl>1.8&&fl<3.4)||(fl>4.4&&fl<5.9);
+  const u=Math.abs(nx)>0?y:x;const wx=win&&((u-.6)%3.2)<1.6;const c=wx?[70,84,96]:[198,186,166];
+  const s=.5+.62*Math.max(0,nx*L[0]+ny*L[1]);px.push(x);py.push(y);pz.push(z);pr.push(c[0]*s);pg.push(c[1]*s);pb.push(c[2]*s);pk.push(3);shadeArr.push(s)}};
+ for(let x=B.x0;x<=B.x1;x+=ws){wall(x,B.y0,0,-1,B.eave);wall(x,B.y1,0,1,B.eave)}
+ for(let y=B.y0;y<=B.y1;y+=ws){const top=roofZ(B.x0+.01,y);wall(B.x0,y,-1,0,top);wall(B.x1,y,1,0,top)}}
+const N=px.length;
+const X=Float32Array.from(px),Y=Float32Array.from(py),Z=Float32Array.from(pz),K=Uint8Array.from(pk);
+const colTrue=new Uint32Array(N),colRecon=new Uint32Array(N),colDSM=new Uint32Array(N),colDim=new Uint32Array(N);
+let zmin=1e9,zmax=-1e9;for(let i=0;i<NG;i++){if(Z[i]<zmin)zmin=Z[i];if(Z[i]>zmax)zmax=Z[i]}
+const RAMP=[[43,63,122],[31,138,138],[124,195,110],[240,211,90],[255,243,214]];
+function rampAt(t){t=clamp(t,0,1)*(RAMP.length-1);const i=Math.min(RAMP.length-2,Math.floor(t)),f=t-i,a=RAMP[i],b=RAMP[i+1];return[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f]}
+for(let i=0;i<N;i++){
+ const r=clamp(pr[i],0,255),g=clamp(pg[i],0,255),b=clamp(pb[i],0,255);
+ colTrue[i]=pack(r,g,b);
+ const j=(R()-.5)*18;colRecon[i]=pack(clamp(r+j,0,255),clamp(g+j,0,255),clamp(b+j,0,255));
+ colDim[i]=pack(r*.42+6,g*.42+10,b*.42+12);
+ const e=rampAt((Z[i]-zmin)/(zmax-zmin)),s=.35+.75*shadeArr[i];
+ colDSM[i]=pack(clamp(e[0]*s,0,255),clamp(e[1]*s,0,255),clamp(e[2]*s,0,255));
+}
+const perm=new Uint32Array(N);for(let i=0;i<N;i++)perm[i]=i;for(let i=N-1;i>0;i--){const j=Math.floor(R()*(i+1));const t=perm[i];perm[i]=perm[j];perm[j]=t}
+
+/* sparse tie points: high-contrast / edge locations */
+const sparse=(()=>{const sc=[];for(let j=1;j<GY-1;j++)for(let i=1;i<GX-1;i++){const g=j*GX+i;
+  const cd=Math.abs(gridR[g+1]-gridR[g-1])+Math.abs(gridR[g+GX]-gridR[g-GX]);
+  const zd=Math.abs(gridZ[g+1]-gridZ[g-1])+Math.abs(gridZ[g+GX]-gridZ[g-GX]);
+  sc.push([cd/70+Math.min(zd,4)*1.2+hash(i*3,j*7)*.9,g])}
+ sc.sort((a,b)=>b[0]-a[0]);const out=sc.slice(0,1500).filter(()=>R()<.75).map(s=>s[1]);
+ for(let i=NG;i<N;i++)if(R()<.07)out.push(i);return Uint32Array.from(out)})();
+const NS=sparse.length;
+const sNoise=new Float32Array(NS*3);for(let i=0;i<NS*3;i++)sNoise[i]=gauss();
+const sX=new Float32Array(NS),sY=new Float32Array(NS),sZ=new Float32Array(NS),sC=new Uint32Array(NS);
+for(let i=0;i<NS;i++)sC[i]=colTrue[sparse[i]];
+
+/* ---------- flight plan ---------- */
+const P={alt:35,front:80,side:70};
+let cams=[],plan={};
+const CELL=2,CX=AW/CELL,CY=AH/CELL;
+let cover=new Uint16Array(CX*CY);
+const cellZ=new Float32Array(CX*CY);for(let j=0;j<CY;j++)for(let i=0;i<CX;i++)cellZ[j*CX+i]=terrain((i+.5)*CELL,(j+.5)*CELL);
+function sees(c,x,y,z){const d=c.z-z;if(d<=0)return false;const u=(x-c.x)*c.z/d/(plan.A/2),v=(y-c.y)*c.z/d/(plan.Lg/2);return Math.abs(u)<=1&&Math.abs(v)<=1}
+function buildPlan(){
+ const A=1.5*P.alt,Lg=1.0*P.alt,sx=A*(1-P.side/100),sy=Lg*(1-P.front/100);
+ const nx=Math.ceil(AW/sx)+1,ny=Math.ceil(AH/sy)+1;
+ plan={A,Lg,sx,sy,nx,ny,gsd:A*100/5472};
+ cams=[];let id=1;
+ for(let i=0;i<nx;i++){const x=AW/2+(i-(nx-1)/2)*sx;for(let k=0;k<ny;k++){const kk=i%2?ny-1-k:k;const y=AH/2+(kk-(ny-1)/2)*sy;
+  cams.push({x,y,z:P.alt,id:id++,lane:i,jx:gauss(),jy:gauss(),jz:gauss()})}}
+ cover=new Uint16Array(CX*CY);capturedTo=0;
+ seamCache=null;thumbKey='';orthoKey='';
+ setupPhotoSlider();
+}
+let capturedTo=0;
+function addCover(upto){
+ for(;capturedTo<upto;capturedTo++){const c=cams[capturedTo];
+  const i0=Math.max(0,Math.floor((c.x-plan.A/2)/CELL)),i1=Math.min(CX-1,Math.floor((c.x+plan.A/2)/CELL));
+  const j0=Math.max(0,Math.floor((c.y-plan.Lg/2)/CELL)),j1=Math.min(CY-1,Math.floor((c.y+plan.Lg/2)/CELL));
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const g=j*CX+i;if(sees(c,(i+.5)*CELL,(j+.5)*CELL,cellZ[g]))cover[g]++}}
+}
+function coverStats(){const a=Array.from(cover).sort((p,q)=>p-q);let ge5=0;for(const v of a)if(v>=5)ge5++;return{med:a[a.length>>1],min:a[0],max:a[a.length-1],ge5:ge5/a.length}}
+
+/* ---------- canvas & orbit camera ---------- */
+const cv=$('#view'),ctx=cv.getContext('2d');
+let DPR=1,CW=0,CH=0,imgData,buf,zb,BG=0,bgCss='#0e161a';
+function readBG(){bgCss=getComputedStyle(document.documentElement).getPropertyValue('--vp').trim()||'#0e161a';const m=bgCss.match(/#(..)(..)(..)/);BG=m?pack(parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)):pack(14,22,26);dirty=true}
+function resize(){const r=cv.getBoundingClientRect();DPR=Math.min(2,window.devicePixelRatio||1);CW=Math.max(2,Math.round(r.width*DPR));CH=Math.max(2,Math.round(r.height*DPR));
+ cv.width=CW;cv.height=CH;imgData=ctx.createImageData(CW,CH);buf=new Uint32Array(imgData.data.buffer);zb=new Float32Array(CW*CH);orthoKey='';dirty=true}
+const orbit={yaw:-2.25,pitch:.62,dist:175,tx:60,ty:45,tz:3};
+const V={};
+function setView(){const {yaw,pitch,dist}=orbit;const ex=orbit.tx+dist*Math.cos(pitch)*Math.cos(yaw),ey=orbit.ty+dist*Math.cos(pitch)*Math.sin(yaw),ez=orbit.tz+dist*Math.sin(pitch);
+ let fx=orbit.tx-ex,fy=orbit.ty-ey,fz=orbit.tz-ez;const fm=Math.hypot(fx,fy,fz);fx/=fm;fy/=fm;fz/=fm;
+ let rx=fy,ry=-fx,rz=0;const rm=Math.hypot(rx,ry);rx/=rm;ry/=rm;
+ const ux=ry*fz-rz*fy,uy=rz*fx-rx*fz,uz=rx*fy-ry*fx;
+ Object.assign(V,{ex,ey,ez,fx,fy,fz,rx,ry,rz,ux,uy,uz,f:Math.min(CH*1.35,CW*.95),cx:CW/2,cy:CH*.52})}
+function P3(x,y,z){const dx=x-V.ex,dy=y-V.ey,dz=z-V.ez,zc=dx*V.fx+dy*V.fy+dz*V.fz;if(zc<.5)return null;const k=V.f/zc;return[V.cx+(dx*V.rx+dy*V.ry+dz*V.rz)*k,V.cy-(dx*V.ux+dy*V.uy+dz*V.uz)*k,zc]}
+function clearBuf(){buf.fill(BG);zb.fill(1e9)}
+function splat(Xa,Ya,Za,Ca,n,idx,ws){
+ const {ex,ey,ez,fx,fy,fz,rx,ry,rz,ux,uy,uz,f,cx,cy}=V;
+ for(let k=0;k<n;k++){const i=idx?idx[k]:k;const dx=Xa[i]-ex,dy=Ya[i]-ey,dz=Za[i]-ez,zc=dx*fx+dy*fy+dz*fz;if(zc<1)continue;
+  const q=f/zc,sx=cx+(dx*rx+dy*ry+dz*rz)*q,sy=cy-(dx*ux+dy*uy+dz*uz)*q;let s=Math.ceil(ws*q);if(s<1)s=1;if(s>40)s=40;
+  const x0=(sx-s/2)|0,y0=(sy-s/2)|0,col=Ca[i];
+  for(let yy=Math.max(0,y0);yy<Math.min(CH,y0+s);yy++){let p=yy*CW+Math.max(0,x0);const pe=yy*CW+Math.min(CW,x0+s);for(;p<pe;p++){if(zc<zb[p]){zb[p]=zc;buf[p]=col}}}}
+}
+function flush(){ctx.putImageData(imgData,0,0)}
+
+/* ---------- stage content ---------- */
+const STAGES=[
+{title:'Plan the flight and capture overlapping photos',
+ body:`<p>The drone flies parallel lines in a “lawnmower” pattern and triggers the camera at a fixed spacing. <strong>Front overlap</strong> is shared area between consecutive photos on a line; <strong>side overlap</strong> is shared area between neighbouring lines.</p><p>SfM only works on points it can see in several photos taken from different positions, so overlap is the single most important flight setting.</p>`,
+ try:`Drop front overlap to 60% and side to 40%, then switch to the <em>Overlap map</em>. Red and amber cells are seen in fewer than 5 photos and are likely to reconstruct poorly.`,dur:9.5},
+{title:'Detect and match features',
+ body:`<p>Feature-detection algorithms such as SIFT (Scale-Invariant Feature Transform) find thousands of distinctive <strong>keypoints</strong> in every photo (corners, edges, texture) and gives each a descriptor, so the same spot can be recognized in another photo even when it is seen from a different angle.</p><p>A keypoint matched across several photos is a <strong>tie point</strong>. The orange rays connect the selected tie point to every camera that photographed it.</p>`,
+ try:`Compare the building ridge with the parking-lot stripe. Points seen from widely separated cameras (a long baseline) are triangulated more precisely in height.`,dur:12},
+{title:'Align cameras: structure from motion',
+ body:`<p>Using all the tie points, SfM solves for each photo’s position, orientation and lens distortion together with the 3D position of each tie point (<strong>triangulation</strong>).</p><p><strong>Bundle adjustment</strong> then refines everything at once to minimize <strong>reprojection error</strong>: the pixel gap between where a point was seen in a photo and where the current model says it should appear. The result is a set of camera poses and a <strong>sparse point cloud</strong>. GNSS tags and ground control points put it in real-world coordinates.</p>`,
+ try:`Watch the camera pyramids and points settle as the error drops. In your processing report, an RMS reprojection error under about 1 px usually means a good alignment.`,dur:6.5},
+{title:'Densify: multi-view stereo',
+ body:`<p>With every camera pose known, <strong>multi-view stereo (MVS)</strong> searches along matching lines between image pairs to estimate a depth for nearly every pixel. The per-image depth maps are fused into a <strong>dense point cloud</strong>, with colour taken from the photos.</p><p>This is the slowest step. Processing at a lower image scale gives a sparser cloud in much less time.</p>`,
+ try:`Orbit under the tree canopy. SfM only reconstructs what the cameras saw, so ground under trees and building walls hidden from nadir views are thin or missing.`,dur:5},
+{title:'Build the surface model (DSM)',
+ body:`<p>The dense cloud is gridded into a <strong>Digital Surface Model</strong>: a raster in which every cell stores the elevation of the highest surface, including roofs and tree crowns. It can also be meshed into a textured 3D model.</p><p>A <strong>Digital Terrain Model</strong> (bare earth) needs the points classified first so that buildings and vegetation can be removed.</p>`,
+ try:`Switch between <em>Elevation</em> and <em>True colour</em>. The DSM is what the next step uses to put every image pixel in its correct map position.`,dur:2},
+{title:'Orthorectify and mosaic',
+ body:`<p>A raw photo is a perspective projection. Anything above the ground leans away from the photo’s centre (<strong>relief displacement</strong>), and scale changes with elevation, so you can’t measure distances on it reliably.</p><p><strong>Orthorectification</strong> projects each pixel down through the DSM to its true map position. The <strong>mosaic</strong> is then processed from the most nadir-looking part of each photo, joined along seamlines, into one map-accurate image with a uniform GSD.</p>`,
+ try:`Move the photo slider toward images where the building sits near the edge of the frame. The lean grows with distance from the centre, while the orthomosaic stays fixed.`,dur:0}
+];
+let stage=0,stageT=0,lastTS=0,dirty=true,tieIdx=0,surfMode='elev',groundMode='foot';
+
+/* tie points */
+const TIE=[
+ {name:'Roof eave corner',x:B.x0+.02,y:B.y0+.02},
+ {name:'Roof ridge end',x:B.x1-.02,y:B.ym},
+ {name:'Tree crown',x:83,y:55},
+ {name:'Parking stripe end',x:57.6,y:35.9},
+ {name:'Road centre-line dash',x:XR(12.2),y:12.2},
+ {name:'Crop-row end',x:80.5,y:35.6}
+].map(t=>({...t,z:surfZ(t.x,t.y)}));
+let tieRays=[];
+function computeTie(){const t=TIE[tieIdx];tieRays=cams.filter(c=>sees(c,t.x,t.y,t.z));}
+
+/* thumbnails */
+const thumbWrap=$('#thumbs');
+for(let i=0;i<4;i++){const f=document.createElement('figure');f.innerHTML='<canvas width="300" height="200"></canvas><figcaption></figcaption>';thumbWrap.appendChild(f)}
+let thumbKey='';
+function renderNadir(c2,cam,w,h,mark){
+ const x2=c2.getContext('2d'),id=x2.createImageData(w,h),b=new Uint32Array(id.data.buffer),z=new Float32Array(w*h);b.fill(BG);z.fill(1e9);
+ const kx=w*cam.z/plan.A;
+ for(let i=0;i<N;i++){const d=cam.z-Z[i];if(d<=.5)continue;const q=kx/d,sx=w/2+(X[i]-cam.x)*q,sy=h/2-(Y[i]-cam.y)*q;
+  let s=Math.ceil(STEP*1.35*q);if(s<1)s=1;const x0=(sx-s/2)|0,y0=(sy-s/2)|0;if(x0>=w||y0>=h||x0+s<0||y0+s<0)continue;const col=colTrue[i];
+  for(let yy=Math.max(0,y0);yy<Math.min(h,y0+s);yy++){let p=yy*w+Math.max(0,x0);const pe=yy*w+Math.min(w,x0+s);for(;p<pe;p++)if(d<z[p]){z[p]=d;b[p]=col}}}
+ x2.putImageData(id,0,0);
+ return (xx,yy,zz)=>{const d=cam.z-zz,q=kx/d;return[w/2+(xx-cam.x)*q,h/2-(yy-cam.y)*q]};
+}
+function renderThumbs(){
+ const key=tieIdx+'|'+cams.length+'|'+P.alt+'|'+BG;if(key===thumbKey)return;thumbKey=key;
+ const t=TIE[tieIdx],list=tieRays,figs=thumbWrap.querySelectorAll('figure');
+ const pick=[];if(list.length){for(let k=0;k<4;k++)pick.push(list[Math.round(k*(list.length-1)/3)])}
+ figs.forEach((f,k)=>{const c2=f.querySelector('canvas'),cam=pick[k];const x2=c2.getContext('2d');
+  if(!cam){x2.fillStyle=bgCss;x2.fillRect(0,0,300,200);f.querySelector('figcaption').textContent='';return}
+  const pr=renderNadir(c2,cam,300,200);const [mx,my]=pr(t.x,t.y,t.z);
+  x2.strokeStyle='#ff8b40';x2.lineWidth=2.5;x2.beginPath();x2.arc(mx,my,11,0,6.283);x2.stroke();
+  x2.beginPath();x2.moveTo(mx-18,my);x2.lineTo(mx-7,my);x2.moveTo(mx+7,my);x2.lineTo(mx+18,my);x2.moveTo(mx,my-18);x2.lineTo(mx,my-7);x2.moveTo(mx,my+7);x2.lineTo(mx,my+18);x2.stroke();
+  f.querySelector('figcaption').textContent=`IMG_${String(cam.id).padStart(4,'0')} · px ${Math.round(mx/300*5472)}, ${Math.round(my/200*3648)}`;});
+}
+
+/* stage 6: photo list, ortho, seams */
+let photoList=[];
+function setupPhotoSlider(){const cx=59,cy=46,dist=(a,b)=>Math.hypot(a.x-cx,a.y-cy)-Math.hypot(b.x-cx,b.y-cy);
+ photoList=cams.filter(c=>sees(c,cx,cy,B.top)&&sees(c,B.x0,B.y0,B.base)&&sees(c,B.x1,B.y1,B.base)).sort(dist);
+ // two extra photos with the building nearer the frame edge (partly cut off) to show a stronger lean
+ photoList=photoList.concat(cams.filter(c=>!photoList.includes(c)&&sees(c,cx,cy,B.base)).sort(dist).slice(0,2));
+ const s=$('#photo');s.max=Math.max(0,photoList.length-1);s.value=Math.round((photoList.length-1)*.65);updPhotoOut()}
+function updPhotoOut(){const c=photoList[+$('#photo').value];$('#oPhoto').textContent=c?`IMG_${String(c.id).padStart(4,'0')}`:'—'}
+let seamCache=null,orthoKey='',rawC=document.createElement('canvas'),orthoC=document.createElement('canvas'),rawProj=null;
+function seams(){if(seamCache)return seamCache;const lab=new Int32Array(AW*AH);
+ for(let j=0;j<AH;j++)for(let i=0;i<AW;i++){let best=1e9,bi=0;for(let k=0;k<cams.length;k++){const c=cams[k],d=(c.x-i-.5)**2+(c.y-j-.5)**2;if(d<best){best=d;bi=k}}lab[j*AW+i]=bi}
+ return seamCache=lab}
+function renderOrtho(w,h){
+ const x2=(orthoC.width=w,orthoC.height=h,orthoC.getContext('2d')),id=x2.createImageData(w,h),b=new Uint32Array(id.data.buffer),z=new Float32Array(w*h);b.fill(BG);z.fill(1e9);
+ const sc=w/AW;let s=Math.ceil(STEP*1.3*sc)+1;
+ for(let i=0;i<NG;i++){const sx=X[i]*sc,sy=(AH-Y[i])*sc,d=-Z[i],x0=(sx-s/2)|0,y0=(sy-s/2)|0,col=colTrue[i];
+  for(let yy=Math.max(0,y0);yy<Math.min(h,y0+s);yy++){let p=yy*w+Math.max(0,x0);const pe=yy*w+Math.min(w,x0+s);for(;p<pe;p++)if(d<z[p]){z[p]=d;b[p]=col}}}
+ x2.putImageData(id,0,0);
+}
+
+/* ---------- drawing per stage ---------- */
+function footprintPath(c,alpha){const hx=plan.A/2,hy=plan.Lg/2,pts=[];const e=(x0,y0,x1,y1)=>{for(let k=0;k<6;k++){const t=k/6,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t;pts.push(P3(x,y,terrain(clamp(x,-20,140),clamp(y,-20,110))+.3))}};
+ e(c.x-hx,c.y-hy,c.x+hx,c.y-hy);e(c.x+hx,c.y-hy,c.x+hx,c.y+hy);e(c.x+hx,c.y+hy,c.x-hx,c.y+hy);e(c.x-hx,c.y+hy,c.x-hx,c.y-hy);
+ if(pts.some(p=>!p))return false;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();return true}
+const OVC=[[0,'rgba(0,0,0,0)'],[1,'#d6336c'],[3,'#f08c00'],[5,'#f2c230'],[7,'#7ccf6e'],[10,'#1fb89a'],[15,'#2f8fd8']];
+function ovColor(n){let c=OVC[0][1];for(const o of OVC)if(n>=o[0])c=o[1];return c}
+function drawDrone(x,y,z){const p=P3(x,y,z);if(!p)return;const r=Math.max(4,1.6*V.f/p[2]);ctx.fillStyle='#ff8b40';ctx.strokeStyle='#ff8b40';ctx.lineWidth=1.5*DPR;
+ for(const [ax,ay] of [[-1,-1],[1,-1],[1,1],[-1,1]]){const q=P3(x+ax*1.2,y+ay*1.2,z);if(q){ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);ctx.stroke();ctx.beginPath();ctx.arc(q[0],q[1],r*.45,0,6.283);ctx.stroke()}}
+ ctx.beginPath();ctx.arc(p[0],p[1],r*.35,0,6.283);ctx.fill()}
+function drawCamPyr(x,y,z,col,w){const a=P3(x,y,z);if(!a)return;const s=[[-1.5,-1],[1.5,-1],[1.5,1],[-1.5,1]].map(([dx,dy])=>P3(x+dx,y+dy,z-2.4));if(s.some(q=>!q))return;
+ ctx.strokeStyle=col;ctx.lineWidth=w;ctx.beginPath();for(const q of s){ctx.moveTo(a[0],a[1]);ctx.lineTo(q[0],q[1])}ctx.moveTo(s[0][0],s[0][1]);for(let k=1;k<=4;k++)ctx.lineTo(s[k%4][0],s[k%4][1]);ctx.stroke()}
+function label(text,x,y,bg){ctx.font=`500 ${12*DPR}px "IBM Plex Mono",monospace`;const w=ctx.measureText(text).width;ctx.fillStyle=bg||'rgba(8,14,16,.75)';ctx.fillRect(x,y,w+12*DPR,20*DPR);ctx.fillStyle='#e6eef0';ctx.textBaseline='middle';ctx.fillText(text,x+6*DPR,y+10*DPR)}
+
+function drawStage(){
+ if(stage===5){drawOrthoStage();return}
+ setView();clearBuf();
+ const st=stageT;
+ if(stage===0){
+  splat(X,Y,Z,colTrue,N,null,STEP*1.3);flush();
+  const nC=cams.length,prog=reduceMotion?nC:Math.min(nC,st/STAGES[0].dur*nC),n=Math.floor(prog);addCover(Math.min(nC,n+1));
+  if(groundMode==='over'){drawOverlap()}
+  else{ctx.fillStyle='rgba(90,205,225,.075)';ctx.strokeStyle='rgba(120,220,235,.35)';ctx.lineWidth=DPR;
+   for(let i=0;i<=Math.min(n,nC-1);i++){if(footprintPath(cams[i])){ctx.fill();if(i>=n-1)ctx.stroke()}}}
+  // flight path
+  ctx.strokeStyle='rgba(255,139,64,.45)';ctx.lineWidth=1.2*DPR;ctx.beginPath();let first=true;
+  for(let i=0;i<=Math.min(n,nC-1);i++){const p=P3(cams[i].x,cams[i].y,cams[i].z);if(!p)continue;first?ctx.moveTo(p[0],p[1]):ctx.lineTo(p[0],p[1]);first=false}ctx.stroke();
+  ctx.fillStyle='rgba(255,139,64,.9)';for(let i=0;i<=Math.min(n,nC-1);i++){const p=P3(cams[i].x,cams[i].y,cams[i].z);if(p){ctx.fillRect(p[0]-1.5*DPR,p[1]-1.5*DPR,3*DPR,3*DPR)}}
+  const a=cams[Math.min(n,nC-1)],b=cams[Math.min(n+1,nC-1)],f=prog-n;const dx=a.x+(b.x-a.x)*f,dy=a.y+(b.y-a.y)*f;
+  if(n<nC){const cur=cams[Math.min(n,nC-1)];const ap=P3(dx,dy,P.alt);ctx.strokeStyle='rgba(255,139,64,.55)';ctx.lineWidth=DPR;
+   const hx=plan.A/2,hy=plan.Lg/2;for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){const q=P3(cur.x+sx*hx,cur.y+sy*hy,terrain(clamp(cur.x+sx*hx,-20,140),clamp(cur.y+sy*hy,-20,110)));if(ap&&q){ctx.beginPath();ctx.moveTo(ap[0],ap[1]);ctx.lineTo(q[0],q[1]);ctx.stroke()}}}
+  drawDrone(dx,dy,P.alt);
+  label(`Photos captured  ${Math.min(nC,n+1)} / ${nC}`,12*DPR,12*DPR);
+ }
+ else if(stage===1){
+  splat(X,Y,Z,colDim,N,null,STEP*1.3);flush();
+  const t=TIE[tieIdx];const tp=P3(t.x,t.y,t.z);
+  ctx.fillStyle='rgba(200,215,220,.35)';for(const c of cams){const p=P3(c.x,c.y,c.z);if(p)ctx.fillRect(p[0]-1.2*DPR,p[1]-1.2*DPR,2.4*DPR,2.4*DPR)}
+  const grow=reduceMotion?1:ease(((st%4)-.1)/1.2);
+  ctx.lineWidth=1.1*DPR;
+  for(const c of tieRays){const p=P3(c.x,c.y,c.z);if(!p||!tp)continue;ctx.strokeStyle='rgba(255,139,64,.55)';ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(p[0]+(tp[0]-p[0])*grow,p[1]+(tp[1]-p[1])*grow);ctx.stroke();ctx.fillStyle='#ff8b40';ctx.fillRect(p[0]-2*DPR,p[1]-2*DPR,4*DPR,4*DPR)}
+  if(tp){ctx.strokeStyle='#fff';ctx.lineWidth=2*DPR;ctx.beginPath();ctx.arc(tp[0],tp[1],7*DPR,0,6.283);ctx.stroke();label(t.name,tp[0]+12*DPR,tp[1]-10*DPR,'rgba(214,90,14,.9)')}
+  label(`Tie point seen in ${tieRays.length} photos`,12*DPR,12*DPR);
+ }
+ else if(stage===2){
+  const tt=reduceMotion?99:st;const e=ease((tt-1.3)/4.2),amp=3.2*Math.pow(1-e,1.6)+.02;
+  const nVis=Math.floor(clamp(tt/1.3,0,1)*NS);
+  for(let i=0;i<NS;i++){const g=sparse[i];sX[i]=X[g]+sNoise[i*3]*amp;sY[i]=Y[g]+sNoise[i*3+1]*amp;sZ[i]=Z[g]+sNoise[i*3+2]*amp*1.6}
+  splat(sX,sY,sZ,sC,nVis,null,.8);flush();
+  const cAmp=amp*1.3;const col=`rgba(120,214,230,${.35+.35*e})`;
+  for(const c of cams)drawCamPyr(c.x+c.jx*cAmp,c.y+c.jy*cAmp,c.z+c.jz*cAmp,col,DPR);
+  const err=.41+13.5*Math.pow(1-e,2);
+  S.iter=Math.round(e*24);S.err=err;S.nvis=nVis;
+  label(`Bundle adjustment · iteration ${S.iter} · RMS error ${err.toFixed(2)} px`,12*DPR,12*DPR);
+ }
+ else if(stage===3){
+  const tt=reduceMotion?99:st;const k=Math.floor(ease(tt/4.2)*N);S.dense=k;
+  splat(X,Y,Z,colRecon,k,perm,STEP*1.25);flush();
+  if($('#showCams').checked){for(const c of cams)drawCamPyr(c.x,c.y,c.z,'rgba(120,214,230,.35)',DPR)}
+  label(`Dense points  ${k.toLocaleString()}`,12*DPR,12*DPR);
+ }
+ else if(stage===4){
+  splat(X,Y,Z,surfMode==='elev'?colDSM:colTrue,NG,null,STEP*1.45);flush();
+  label(surfMode==='elev'?'DSM · 0.75 m cells · hillshaded':'DSM draped with true colour',12*DPR,12*DPR);
+ }
+}
+function drawOverlap(){const gv=[];for(let j=0;j<=CY;j++)for(let i=0;i<=CX;i++){const x=i*CELL,y=j*CELL;gv.push(P3(x,y,terrain(x,y)+.3))}
+ ctx.globalAlpha=.72;for(let j=0;j<CY;j++)for(let i=0;i<CX;i++){const n=cover[j*CX+i];if(!n)continue;const a=gv[j*(CX+1)+i],b=gv[j*(CX+1)+i+1],c=gv[(j+1)*(CX+1)+i+1],d=gv[(j+1)*(CX+1)+i];if(!a||!b||!c||!d)continue;
+  ctx.fillStyle=ovColor(n);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.closePath();ctx.fill()}ctx.globalAlpha=1}
+
+function drawOrthoStage(){
+ ctx.fillStyle=bgCss;ctx.fillRect(0,0,CW,CH);
+ const cam=photoList[+$('#photo').value];if(!cam){label('No photo sees the whole building at these settings',12*DPR,12*DPR);return}
+ const gap=14*DPR,pad=12*DPR,top=36*DPR,side=CW>CH*1.15;
+ let rw,rh,ow,oh,rx,ry,ox,oy;
+ if(side){const aw=(CW-gap-pad*2)/2,ah=CH-top-pad;rw=Math.min(aw,ah*1.5);rh=rw/1.5;ow=Math.min(aw,ah*4/3);oh=ow*.75;rx=pad+(aw-rw)/2;ox=pad+aw+gap+(aw-ow)/2;ry=top+(ah-rh)/2;oy=top+(ah-oh)/2}
+ else{const aw=CW-pad*2,ah=(CH-top*2-pad)/2;rw=Math.min(aw,ah*1.5);rh=rw/1.5;ow=Math.min(aw,ah*4/3);oh=ow*.75;rx=(CW-rw)/2;ox=(CW-ow)/2;ry=top;oy=top*2+ah}
+ rw=Math.round(rw);rh=Math.round(rh);ow=Math.round(ow);oh=Math.round(oh);
+ const key=[cam.id,rw,ow,BG,cams.length].join('|');
+ if(key!==orthoKey){orthoKey=key;rawC.width=rw;rawC.height=rh;rawProj=renderNadir(rawC,cam,rw,rh);renderOrtho(ow,oh)}
+ ctx.drawImage(rawC,rx,ry);ctx.drawImage(orthoC,ox,oy);
+ ctx.strokeStyle='rgba(219,230,232,.3)';ctx.lineWidth=DPR;ctx.strokeRect(rx,ry,rw,rh);ctx.strokeRect(ox,oy,ow,oh);
+ // raw overlays
+ ctx.save();ctx.beginPath();ctx.rect(rx,ry,rw,rh);ctx.clip();
+ ctx.strokeStyle='#ff8b40';ctx.lineWidth=1.5*DPR;const cxp=rx+rw/2,cyp=ry+rh/2;ctx.beginPath();ctx.moveTo(cxp-10*DPR,cyp);ctx.lineTo(cxp+10*DPR,cyp);ctx.moveTo(cxp,cyp-10*DPR);ctx.lineTo(cxp,cyp+10*DPR);ctx.stroke();
+ const fp=[[B.x0,B.y0],[B.x1,B.y0],[B.x1,B.y1],[B.x0,B.y1]];
+ if($('#showFoot').checked){ctx.setLineDash([6*DPR,4*DPR]);ctx.strokeStyle='#ffffff';ctx.lineWidth=1.6*DPR;ctx.beginPath();fp.forEach(([x,y],i)=>{const [a,b]=rawProj(x,y,B.base);i?ctx.lineTo(rx+a,ry+b):ctx.moveTo(rx+a,ry+b)});ctx.closePath();ctx.stroke();ctx.setLineDash([])}
+ {ctx.strokeStyle='#ff8b40';ctx.lineWidth=1.6*DPR;ctx.beginPath();fp.forEach(([x,y],i)=>{const [a,b]=rawProj(x,y,B.eave);i?ctx.lineTo(rx+a,ry+b):ctx.moveTo(rx+a,ry+b)});ctx.closePath();ctx.stroke()}
+ const [ra,rb]=rawProj(59,B.ym,B.top),[ba,bb]=rawProj(59,B.ym,B.base);
+ ctx.strokeStyle='#ff8b40';ctx.lineWidth=2*DPR;ctx.beginPath();ctx.moveTo(rx+ba,ry+bb);ctx.lineTo(rx+ra,ry+rb);ctx.stroke();ctx.beginPath();ctx.arc(rx+ra,ry+rb,3.5*DPR,0,6.283);ctx.fillStyle='#ff8b40';ctx.fill();
+ ctx.restore();
+ // ortho overlays
+ ctx.save();ctx.beginPath();ctx.rect(ox,oy,ow,oh);ctx.clip();const sc=ow/AW;
+ if($('#showSeams').checked){const lab=seams();ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=DPR;ctx.beginPath();
+  for(let j=0;j<AH;j++)for(let i=0;i<AW;i++){const l=lab[j*AW+i];if(i<AW-1&&lab[j*AW+i+1]!==l){ctx.moveTo(ox+(i+1)*sc,oy+(AH-j)*sc);ctx.lineTo(ox+(i+1)*sc,oy+(AH-j-1)*sc)}if(j<AH-1&&lab[(j+1)*AW+i]!==l){ctx.moveTo(ox+i*sc,oy+(AH-j-1)*sc);ctx.lineTo(ox+(i+1)*sc,oy+(AH-j-1)*sc)}}ctx.stroke();
+}
+ if($('#showFoot').checked){ctx.setLineDash([6*DPR,4*DPR]);ctx.strokeStyle='#ffffff';ctx.lineWidth=1.6*DPR;ctx.strokeRect(ox+B.x0*sc,oy+(AH-B.y1)*sc,(B.x1-B.x0)*sc,(B.y1-B.y0)*sc);ctx.setLineDash([])}
+ // where this photo's centre is
+ ctx.strokeStyle='#ff8b40';ctx.lineWidth=1.5*DPR;const qx=ox+cam.x*sc,qy=oy+(AH-cam.y)*sc;ctx.beginPath();ctx.moveTo(qx-8*DPR,qy);ctx.lineTo(qx+8*DPR,qy);ctx.moveTo(qx,qy-8*DPR);ctx.lineTo(qx,qy+8*DPR);ctx.stroke();
+ ctx.strokeStyle='rgba(255,139,64,.6)';ctx.setLineDash([3*DPR,3*DPR]);ctx.strokeRect(ox+(cam.x-plan.A/2)*sc,oy+(AH-cam.y-plan.Lg/2)*sc,plan.A*sc,plan.Lg*sc);ctx.setLineDash([]);
+ ctx.restore();
+ ctx.font=`600 ${13*DPR}px "IBM Plex Sans",sans-serif`;ctx.fillStyle='#dbe6e8';ctx.textBaseline='alphabetic';
+ ctx.fillText(`Raw photo IMG_${String(cam.id).padStart(4,'0')} · perspective`,rx,ry-9*DPR);
+ ctx.fillText('Orthomosaic · map-true, north up',ox,oy-9*DPR);
+ const r=Math.hypot(59-cam.x,B.ym-cam.y);S.r=r;S.disp=r*(B.top-B.base)/(cam.z-B.top);S.cam=cam;
+}
+
+/* ---------- stats & text ---------- */
+const S={};
+function setStats(rows){$('#stats').innerHTML=rows.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('')}
+let statTick=0;
+function updateStats(){
+ if(stage===0){const cs=coverStats();setStats([['Photos',cams.length],['Flight lines',plan.nx],['Photo spacing',plan.sy.toFixed(1)+' m'],['Line spacing',plan.sx.toFixed(1)+' m'],['Footprint',`${plan.A.toFixed(0)} × ${plan.Lg.toFixed(0)} m`],['GSD',plan.gsd.toFixed(2)+' cm/px'],['Median photos per spot',capturedTo<cams.length?'…':cs.med],['Area seen in ≥ 5 photos',capturedTo<cams.length?'…':Math.round(cs.ge5*100)+'%']])}
+ else if(stage===1){const t=TIE[tieIdx];let base=0;for(const a of tieRays)for(const b of tieRays){const d=Math.hypot(a.x-b.x,a.y-b.y);if(d>base)base=d}
+  setStats([['Tie point',t.name],['Elevation',t.z.toFixed(1)+' m'],['Seen in photos',tieRays.length],['Widest baseline',base.toFixed(1)+' m'],['Point',`${tieIdx+1} of ${TIE.length}`]])}
+ else if(stage===2)setStats([['Cameras aligned',`${cams.length} / ${cams.length}`],['Tie points',(S.nvis||0).toLocaleString()],['Iteration',S.iter??0],['RMS reprojection error',(S.err??0).toFixed(2)+' px']])
+ else if(stage===3)setStats([['Dense points',(S.dense||0).toLocaleString()],['Sparse tie points',NS.toLocaleString()],['Demo density',(N/(AW*AH)).toFixed(1)+' pts/m²'],['Typical real density','100s–1000s pts/m²']])
+ else if(stage===4)setStats([['Cell size','0.75 m (demo)'],['Lowest surface',zmin.toFixed(1)+' m'],['Highest surface',zmax.toFixed(1)+' m'],['Tallest object','Building ridge, '+(B.top-B.base).toFixed(1)+' m']])
+ else if(stage===5&&S.cam){setStats([['Photo',`IMG_${String(S.cam.id).padStart(4,'0')}`],['Ridge distance from photo centre (r)',S.r.toFixed(1)+' m'],['Building height (h)',(B.top-B.base).toFixed(1)+' m'],['Flying height above base (H)',(S.cam.z-B.base).toFixed(1)+' m'],['Ridge displaced in raw photo',S.disp.toFixed(1)+' m'],['Displacement in orthomosaic','≈ 0 m']])}
+}
+
+function renderOverlapLegend(){$('#legOverlapRow').innerHTML=[['1–2',1],['3–4',3],['5–6',5],['7–9',7],['10–14',10],['15+',15]].map(([t,n])=>`<span><i class="sw" style="background:${ovColor(n)}"></i>${t}</span>`).join('')}
+function drawRamp(){const c=$('#ramp'),x=c.getContext('2d');for(let i=0;i<160;i++){const e=rampAt(i/159);x.fillStyle=`rgb(${e.map(Math.round)})`;x.fillRect(i,0,1,10)}$('#dsmMin').textContent=zmin.toFixed(0);$('#dsmMax').textContent=zmax.toFixed(0)}
+
+function setStage(s){
+ stage=clamp(s,0,5);stageT=0;dirty=true;const st=STAGES[stage];
+ $('#stno').textContent=`Step ${stage+1} of 6`;$('#sttitle').textContent=st.title;$('#stbody').innerHTML=st.body;$('#try').innerHTML='<b>Try this</b>'+st.try;
+ if(stage===5)$('#try').insertAdjacentHTML('beforeend','<div class="formula" style="margin-top:8px">relief displacement  d = r · h / H</div>');
+ document.querySelectorAll('.ctl').forEach(c=>c.hidden=+c.dataset.for!==stage);
+ document.querySelectorAll('#steps button').forEach((b,i)=>{b.toggleAttribute('aria-current',false);if(i===stage)b.setAttribute('aria-current','step');b.classList.toggle('done',i<stage)});
+ thumbWrap.hidden=stage!==1;$('#legOverlap').hidden=!(stage===0&&groundMode==='over');$('#legDSM').hidden=!(stage===4&&surfMode==='elev');
+ $('#hint').hidden=stage===5;cv.classList.toggle('static',stage===5);cv.classList.toggle('tall',stage===5);
+ if(stage===0)capturedTo=Math.min(capturedTo,0),cover.fill(0);
+ if(stage===1){computeTie();renderThumbs()}
+ $('#prev').disabled=stage===0;$('#next').disabled=stage===5;
+ requestAnimationFrame(()=>{resize();dirty=true});
+}
+
+/* ---------- loop ---------- */
+function frame(ts){
+ const dt=lastTS?Math.min(.1,(ts-lastTS)/1000):0;lastTS=ts;
+ const dur=STAGES[stage].dur;const animating=!reduceMotion&&(stage===1||stageT<dur+.2);
+ stageT+=dt;
+ if(stage===1&&!reduceMotion){const k=Math.floor(stageT/4);if(k!==S.lastTieCycle){if(S.lastTieCycle!==undefined&&k>S.lastTieCycle){tieIdx=(tieIdx+1)%TIE.length;computeTie();renderThumbs()}S.lastTieCycle=k}}
+ if($('#auto').checked&&stage<5&&stageT>(stage===1?12:dur)+2.5){setStage(stage+1)}
+ if(animating||dirty){drawStage();dirty=false;if((statTick++%6)===0||!animating)updateStats()}
+ requestAnimationFrame(frame);
+}
+
+/* ---------- interaction ---------- */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{if(stage===5)return;drag={x:e.clientX,y:e.clientY,yaw:orbit.yaw,pitch:orbit.pitch};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;orbit.yaw=drag.yaw-(e.clientX-drag.x)*.008;orbit.pitch=clamp(drag.pitch+(e.clientY-drag.y)*.006,.12,1.5);dirty=true});
+const end=()=>drag=null;cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+cv.addEventListener('wheel',e=>{if(stage===5)return;e.preventDefault();orbit.dist=clamp(orbit.dist*Math.exp(e.deltaY*.0012),60,320);dirty=true},{passive:false});
+document.querySelectorAll('#steps button').forEach(b=>b.addEventListener('click',()=>setStage(+b.dataset.s)));
+$('#prev').onclick=()=>setStage(stage-1);$('#next').onclick=()=>setStage(stage+1);$('#replay').onclick=()=>{setStage(stage)};
+function updOuts(){$('#oAlt').textContent=P.alt+' m';$('#oFront').textContent=P.front+'%';$('#oSide').textContent=P.side+'%'}
+for(const id of ['alt','front','side'])$('#'+id).addEventListener('input',e=>{P[id]=+e.target.value;updOuts();buildPlan();stageT=STAGES[0].dur;dirty=true});
+const segSet=(a,b,on)=>{$(a).setAttribute('aria-pressed',on);$(b).setAttribute('aria-pressed',!on)};
+$('#mFoot').onclick=()=>{groundMode='foot';segSet('#mFoot','#mOver',true);$('#legOverlap').hidden=true;dirty=true};
+$('#mOver').onclick=()=>{groundMode='over';segSet('#mFoot','#mOver',false);$('#legOverlap').hidden=false;dirty=true};
+$('#cElev').onclick=()=>{surfMode='elev';segSet('#cElev','#cRGB',true);$('#legDSM').hidden=false;dirty=true};
+$('#cRGB').onclick=()=>{surfMode='rgb';segSet('#cElev','#cRGB',false);$('#legDSM').hidden=true;dirty=true};
+$('#nextTie').onclick=()=>{tieIdx=(tieIdx+1)%TIE.length;computeTie();renderThumbs();stageT=Math.floor(stageT/4)*4+.001;S.lastTieCycle=Math.floor(stageT/4);dirty=true};
+$('#photo').addEventListener('input',()=>{updPhotoOut();dirty=true});
+for(const id of ['showSeams','showFoot','showCams'])$('#'+id).addEventListener('change',()=>dirty=true);
+new ResizeObserver(()=>{resize()}).observe(cv);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{readBG();thumbKey='';orthoKey='';if(stage===1)renderThumbs()});
+new MutationObserver(()=>{readBG();thumbKey='';orthoKey='';if(stage===1)renderThumbs()}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+readBG();updOuts();buildPlan();renderOverlapLegend();drawRamp();resize();setStage(0);requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

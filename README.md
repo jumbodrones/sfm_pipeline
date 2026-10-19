@@ -2,7 +2,7 @@
 
 An interactive, browser-based lab that walks students through the drone photogrammetry pipeline. It shows how overlapping photos become a 3D point cloud and then an orthomosaic using Structure from Motion (SfM).
 
-**Live page:** https://jumbodrones/sfm_pipeline/index.html
+**Live page:** https://github.com/jumbodrones/sfm_pipeline/index.html
 
 ## What it covers
 

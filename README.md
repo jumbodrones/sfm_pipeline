@@ -2,7 +2,7 @@
 
 An interactive, browser-based lab that walks students through the drone photogrammetry pipeline. It shows how overlapping photos become a 3D point cloud and then an orthomosaic using Structure from Motion (SfM).
 
-**Live page:** https://YOUR-USERNAME.github.io/REPO-NAME/
+**Live page:** https://jumbodrones/sfm_pipeline/index.html
 
 ## What it covers
 
@@ -18,14 +18,11 @@ The page follows one simulated survey flight through six steps:
 5. **Surface:** a Digital Surface Model (DSM), shown by elevation or in true colour.
 6. **Orthomosaic:** a raw perspective photo next to the orthomosaic, showing relief displacement (d = r · h / H) and mosaic seamlines.
 
-Each step has a short explanation and a "Try this" prompt that can be used as a lab question.
-
 ## Using it
 
 - Open `index.html` in any modern browser. There is no installation, build step or server.
 - Drag to orbit the 3D view and scroll to zoom.
-- To host it, enable GitHub Pages under **Settings → Pages → Deploy from a branch** (`main`, `/ (root)`).
-- To embed it in Canvas, link to the live page or add it with an iframe.
+
 
 ## Notes
 

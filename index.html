@@ -83,6 +83,24 @@ dl.stats dd{margin:0;font-family:var(--f-mono);font-size:13px;text-align:right;f
 .try b{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--hot);display:block;margin-bottom:2px}
 .formula{font-family:var(--f-mono);font-size:13px;background:color-mix(in srgb,var(--accent) 10%,transparent);padding:6px 10px;border-radius:4px}
 footer{font-size:13px;color:var(--muted);max-width:90ch}
+/* Bundle adjustment close-up */
+.ba{display:flex;flex-direction:column;gap:16px;border-top:1px solid var(--line);padding-top:22px}
+.ba h2{font-family:var(--f-display);font-weight:700;font-size:clamp(24px,3vw,32px);line-height:1.1;margin:0;text-wrap:balance}
+.ba .lede{margin:6px 0 0}
+.ba-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start}
+.ba-vp{background:var(--vp);border-radius:6px;overflow:hidden;position:relative}
+#baCv{display:block;width:100%;aspect-ratio:16/12;touch-action:none;cursor:grab}
+#baCv.dragging{cursor:grabbing}
+.ba-side{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.ba-btns{display:flex;flex-wrap:wrap;gap:8px}
+.ba-status{font-family:var(--f-mono);font-size:12px;color:var(--hot);min-height:1.4em;margin:0}
+#baChart{width:100%;height:130px;display:block}
+.ba-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px 26px}
+.ba-cols h3{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:0 0 4px;font-weight:500}
+.ba-cols p{margin:0;font-size:14px}
+@media (max-width:980px){.ba-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){#baCv{aspect-ratio:3/4}}
+
 .refs{border-top:1px solid var(--line);padding-top:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:18px 32px}
 .refs h2{grid-column:1/-1;font-family:var(--f-display);font-weight:700;font-size:24px;margin:0}
 .refs h3{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:0 0 6px;font-weight:500}
@@ -160,6 +178,7 @@ footer{font-size:13px;color:var(--muted);max-width:90ch}
         </div>
       </div>
       <div class="ctl" data-for="1"><div><button class="btn" id="nextTie">Next tie point</button></div></div>
+      <div class="ctl" data-for="2"><div><button class="btn" id="toBA">Bundle adjustment up close ↓</button></div></div>
       <div class="ctl" data-for="3"><label class="check"><input type="checkbox" id="showCams" checked> Show camera positions</label></div>
       <div class="ctl" data-for="4">
         <div class="seg" role="group" aria-label="Surface colour">
@@ -177,6 +196,37 @@ footer{font-size:13px;color:var(--muted);max-width:90ch}
       <div class="try" id="try"></div>
     </aside>
   </div>
+
+  <section class="ba" id="ba" hidden aria-labelledby="baH">
+    <div>
+      <p class="eyebrow">Step 3 close-up</p>
+      <h2 id="baH">Bundle adjustment up close</h2>
+      <p class="lede">This cross-section shrinks the problem to four cameras and nine ground points so you can watch the solver work. Each coloured line is a ray from a camera through the spot where it saw a point. When the model is right, the rays for each point meet at that point. Drag any camera or point to break the model, then run the adjustment.</p>
+    </div>
+    <div class="ba-grid">
+      <div class="ba-vp"><canvas id="baCv" aria-label="Side view of four cameras, ground points and their rays, with each camera's image measurements below"></canvas></div>
+      <div class="ba-side">
+        <div class="ba-btns">
+          <button class="btn primary" id="baSolve">Run adjustment</button>
+          <button class="btn" id="baStep">One iteration</button>
+          <button class="btn" id="baScr">Scramble</button>
+        </div>
+        <p class="ba-status" id="baStatus"></p>
+        <label class="check"><input type="checkbox" id="baGCP" checked> Use 2 ground control points (G1, G2)</label>
+        <label class="check"><input type="checkbox" id="baTruth"> Show true positions</label>
+        <dl class="stats" id="baStats"></dl>
+        <canvas id="baChart" aria-label="RMS reprojection error by iteration, log scale"></canvas>
+        <div class="try"><b>Try this</b>Turn off ground control, then click <em>Scramble</em> and <em>Run adjustment</em>. The reprojection error still drops below 1 px, but the point position error stays large. The photos alone fix the model’s shape, not where it sits, how it is rotated or how big it is.</div>
+      </div>
+    </div>
+    <div class="ba-cols">
+      <div><h3>What is unknown</h3><p>Every camera’s position and tilt, and every tie point’s position. Real software also solves for heading, roll and the lens model (focal length, principal point, distortion), and works in 3D.</p></div>
+      <div><h3>What is measured</h3><p>Where each point appears in each photo, in pixels, from feature matching. These measurements never change during the adjustment. Only the model of cameras and points moves.</p></div>
+      <div><h3>What is adjusted</h3><p>The solver predicts where each point should appear in each photo. The gap from the measurement is the <strong>reprojection error</strong>. Each iteration (here Levenberg–Marquardt) moves all cameras and points together to shrink the sum of squared errors, until it stops improving.</p></div>
+      <div><h3>Why it never reaches zero</h3><p>Pixel measurements carry noise (0.5 px here), so the best possible fit leaves a small residual. A large residual for one camera or point usually means a bad match or a poorly modelled lens.</p></div>
+      <div><h3>Why ground control matters</h3><p>Images alone fix the model’s shape but not its position, rotation or scale. Ground control points with surveyed coordinates, or GNSS positions for the cameras, tie the model to real-world coordinates.</p></div>
+    </div>
+  </section>
 
   <section class="refs" aria-labelledby="refsH">
     <h2 id="refsH">References</h2>
@@ -553,7 +603,7 @@ function setStage(s){
  if(stage===5)$('#try').insertAdjacentHTML('beforeend','<div class="formula" style="margin-top:8px">relief displacement  d = r · h / H</div>');
  document.querySelectorAll('.ctl').forEach(c=>c.hidden=+c.dataset.for!==stage);
  document.querySelectorAll('#steps button').forEach((b,i)=>{b.toggleAttribute('aria-current',false);if(i===stage)b.setAttribute('aria-current','step');b.classList.toggle('done',i<stage)});
- thumbWrap.hidden=stage!==1;$('#legOverlap').hidden=!(stage===0&&groundMode==='over');$('#legDSM').hidden=!(stage===4&&surfMode==='elev');
+ thumbWrap.hidden=stage!==1;$('#ba').hidden=stage!==2;$('#legOverlap').hidden=!(stage===0&&groundMode==='over');$('#legDSM').hidden=!(stage===4&&surfMode==='elev');
  $('#hint').hidden=stage===5;cv.classList.toggle('static',stage===5);cv.classList.toggle('tall',stage===5);
  if(stage===0)capturedTo=Math.min(capturedTo,0),cover.fill(0);
  if(stage===1){computeTie();renderThumbs()}
@@ -588,6 +638,7 @@ $('#mOver').onclick=()=>{groundMode='over';segSet('#mFoot','#mOver',false);$('#l
 $('#cElev').onclick=()=>{surfMode='elev';segSet('#cElev','#cRGB',true);$('#legDSM').hidden=false;dirty=true};
 $('#cRGB').onclick=()=>{surfMode='rgb';segSet('#cElev','#cRGB',false);$('#legDSM').hidden=true;dirty=true};
 $('#nextTie').onclick=()=>{tieIdx=(tieIdx+1)%TIE.length;computeTie();renderThumbs();stageT=Math.floor(stageT/4)*4+.001;S.lastTieCycle=Math.floor(stageT/4);dirty=true};
+$('#toBA').onclick=()=>$('#ba').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'});
 $('#photo').addEventListener('input',()=>{updPhotoOut();dirty=true});
 for(const id of ['showSeams','showFoot','showCams'])$('#'+id).addEventListener('change',()=>dirty=true);
 new ResizeObserver(()=>{resize()}).observe(cv);
@@ -595,6 +646,163 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{readBG
 new MutationObserver(()=>{readBG();thumbKey='';orthoKey='';if(stage===1)renderThumbs()}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
 readBG();updOuts();buildPlan();renderOverlapLegend();drawRamp();resize();setStage(0);requestAnimationFrame(frame);
+})();
+</script>
+<script>
+/* Bundle adjustment close-up: 2-D cross-section, Levenberg–Marquardt on cameras (x, z, tilt) and points (x, z) */
+(()=>{
+const $=s=>document.querySelector(s);
+const sec=$('#ba'),cv=$('#baCv'),cx=cv.getContext('2d'),chC=$('#baChart'),chx=chC.getContext('2d');
+const F=1000,HALF=1100,SIG=0.5,DEG=Math.PI/180;
+const COLS=['#ff8b40','#4cc0d1','#c58cf2','#f2c230'],CAMN=['A','B','C','D'];
+let seed=11;const rnd=()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(6.2832*v)};
+const ground=x=>2+1.5*Math.sin(x/9);
+const bld=x=>x>=30&&x<=42;
+const surf=x=>bld(x)?ground(36)+9:ground(x);
+
+/* truth */
+const PT=[{x:4},{x:8,g:1},{x:15},{x:24},{x:33},{x:40},{x:50},{x:58,g:1},{x:64}].map(p=>({...p,z:surf(p.x)}));
+let n=0;PT.forEach(p=>p.lab=p.g?'G'+(p.x<30?1:2):String(++n));
+const CT=[{x:10,z:39.4,t:1.5*DEG},{x:26,z:40.6,t:-2*DEG},{x:42,z:39.8,t:2.5*DEG},{x:58,z:40.3,t:-1*DEG}];
+function proj(c,X,Z){const dx=X-c.x,dz=Z-c.z,s=Math.sin(c.t),co=Math.cos(c.t);const depth=dx*s-dz*co,lat=dx*co+dz*s;return depth<1?NaN:F*lat/depth}
+const OBS=[];CT.forEach((c,ci)=>PT.forEach((p,pi)=>{const u=proj(c,p.x,p.z);if(Math.abs(u)<HALF)OBS.push({c:ci,p:pi,u:u+SIG*gauss()})}));
+
+/* estimate */
+let cams,pts,useGCP=true,lambda=1e-3,iter=0,hist=[],solving=false,lastStep=0,status='';
+function params(){const r=[];cams.forEach(c=>{r.push([c,'x'],[c,'z'],[c,'t'])});pts.forEach((p,i)=>{if(useGCP&&PT[i].g)return;r.push([p,'x'],[p,'z'])});return r}
+function pred(o){return proj(cams[o.c],pts[o.p].x,pts[o.p].z)}
+function resid(){return OBS.map(o=>{const v=pred(o);return Number.isFinite(v)?o.u-v:3000})}
+const cost=r=>r.reduce((a,b)=>a+b*b,0);
+const rms=()=>Math.sqrt(cost(resid())/OBS.length);
+function posErr(){let s=0,k=0;pts.forEach((p,i)=>{if(PT[i].g)return;s+=(p.x-PT[i].x)**2+(p.z-PT[i].z)**2;k++});return Math.sqrt(s/k)}
+function solveLin(A,b,n){for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r*n+i])>Math.abs(A[m*n+i]))m=r;
+  if(m!==i){for(let k=0;k<n;k++){const t=A[i*n+k];A[i*n+k]=A[m*n+k];A[m*n+k]=t}const t=b[i];b[i]=b[m];b[m]=t}
+  const d=A[i*n+i]||1e-12;for(let r=i+1;r<n;r++){const f=A[r*n+i]/d;if(!f)continue;for(let k=i;k<n;k++)A[r*n+k]-=f*A[i*n+k];b[r]-=f*b[i]}}
+ const x=new Float64Array(n);for(let i=n-1;i>=0;i--){let s=b[i];for(let k=i+1;k<n;k++)s-=A[i*n+k]*x[k];x[i]=s/(A[i*n+i]||1e-12)}return x}
+function lmStep(){
+ const P=params(),np=P.length,m=OBS.length,r0=resid(),c0=cost(r0);
+ const J=new Float64Array(m*np);
+ P.forEach(([o,k],j)=>{const h=k==='t'?1e-6:1e-4,v=o[k];o[k]=v+h;const a=OBS.map(pred);o[k]=v-h;const b=OBS.map(pred);o[k]=v;
+  for(let i=0;i<m;i++){const d=(a[i]-b[i])/(2*h);J[i*np+j]=Number.isFinite(d)?d:0}});
+ const A=new Float64Array(np*np),g=new Float64Array(np);
+ for(let i=0;i<m;i++){const ri=r0[i];for(let a=0;a<np;a++){const ja=J[i*np+a];if(!ja)continue;g[a]+=ja*ri;for(let b=a;b<np;b++)A[a*np+b]+=ja*J[i*np+b]}}
+ for(let a=0;a<np;a++)for(let b=0;b<a;b++)A[a*np+b]=A[b*np+a];
+ const save=P.map(([o,k])=>o[k]);
+ for(let tries=0;tries<10;tries++){
+  const M=Float64Array.from(A),rhs=Float64Array.from(g);for(let a=0;a<np;a++)M[a*np+a]+=lambda*(A[a*np+a]+1e-6);
+  const d=solveLin(M,rhs,np);P.forEach(([o,k],j)=>o[k]=save[j]+d[j]);
+  const c1=cost(resid());
+  if(c1<c0){lambda=Math.max(lambda/3,1e-9);return c0-c1}
+  P.forEach(([o,k],j)=>o[k]=save[j]);lambda*=4}
+ return 0}
+
+function reset(scr){
+ cams=CT.map(c=>({...c}));pts=PT.map(p=>({x:p.x,z:p.z}));
+ if(scr){const s=1.05,rot=3*DEG,tx=3.5,tz=-2.5,ox=34,oz=20,co=Math.cos(rot),si=Math.sin(rot);
+  const tr=o=>{const dx=o.x-ox,dz=o.z-oz;o.x=ox+s*(co*dx-si*dz)+tx;o.z=oz+s*(si*dx+co*dz)+tz};
+  cams.forEach(c=>{tr(c);c.t+=rot;c.x+=1.2*gauss();c.z+=1.2*gauss();c.t+=2*DEG*gauss()});
+  pts.forEach(p=>{tr(p);p.x+=1.2*gauss();p.z+=1.2*gauss()})}
+ if(useGCP)pinGCP();
+ lambda=1e-3;iter=0;hist=[rms()];solving=false;status=scr?'Scrambled. The rays no longer meet.':'';draw()}
+function pinGCP(){PT.forEach((p,i)=>{if(p.g){pts[i].x=p.x;pts[i].z=p.z}})}
+function step(){const gain=lmStep();iter++;const r=rms();hist.push(r);
+ const prev=hist[hist.length-2];if(gain<=1e-9||(prev-r)/prev<1e-4){solving=false;status=`Converged after ${iter} iteration${iter===1?'':'s'}.`}else status=`Iteration ${iter}…`;draw()}
+
+/* ---------- drawing ---------- */
+let W=0,H=0,DPR=1,view={};
+function tok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function layout(){const narrow=W<H;const sceneH=H*(narrow?.56:.6);const pad=14*DPR;
+ const xr=[-4,70],zr=[-4,46];const sc=Math.min((W-pad*2)/(xr[1]-xr[0]),(sceneH-pad*2)/(zr[1]-zr[0]));
+ const ox=(W-(xr[1]-xr[0])*sc)/2-xr[0]*sc,oy=pad+(zr[1])*sc+(sceneH-pad*2-(zr[1]-zr[0])*sc)/2;
+ view={sc,ox,oy,sceneH,xr,zr}}
+const S=(x,z)=>[view.ox+x*view.sc,view.oy-z*view.sc];
+const Wd=(sx,sy)=>[(sx-view.ox)/view.sc,(view.oy-sy)/view.sc];
+function draw(){
+ if(sec.hidden||!W)return;layout();const c=cx,d=DPR;
+ c.fillStyle=tok('--vp')||'#0e161a';c.fillRect(0,0,W,H);
+ c.font=`500 ${11*d}px "IBM Plex Mono",monospace`;c.textBaseline='middle';
+ // true ground
+ c.beginPath();for(let x=view.xr[0];x<=view.xr[1];x+=.25){const [a,b]=S(x,surf(x));x===view.xr[0]?c.moveTo(a,b):c.lineTo(a,b)}
+ const [ex,ey]=S(view.xr[1],view.zr[0]),[sx0]=S(view.xr[0],0);c.lineTo(ex,ey);c.lineTo(sx0,ey);c.closePath();c.fillStyle='rgba(219,230,232,.06)';c.fill();
+ c.beginPath();for(let x=view.xr[0];x<=view.xr[1];x+=.25){const [a,b]=S(x,surf(x));x===view.xr[0]?c.moveTo(a,b):c.lineTo(a,b)}c.strokeStyle='rgba(219,230,232,.3)';c.lineWidth=d;c.stroke();
+ c.fillStyle='rgba(219,230,232,.45)';{const [a,b]=S(view.xr[0]+.5,view.zr[0]+.9);c.fillText('true ground (unknown to the solver)',a,b)}
+ // rays from estimated cameras through measured image positions
+ c.lineWidth=1.2*d;
+ OBS.forEach(o=>{const k=cams[o.c],s=Math.sin(k.t),co=Math.cos(k.t);let dx=s+(o.u/F)*co,dz=-co+(o.u/F)*s;const m=Math.hypot(dx,dz);dx/=m;dz/=m;
+  const L=Math.min(80,(k.z-view.zr[0])/Math.max(.05,-dz));const [a,b]=S(k.x,k.z),[e,f]=S(k.x+dx*L,k.z+dz*L);
+  c.strokeStyle=COLS[o.c]+'66';c.beginPath();c.moveTo(a,b);c.lineTo(e,f);c.stroke()});
+ // truth ghosts
+ if($('#baTruth').checked){c.strokeStyle='rgba(255,255,255,.55)';c.setLineDash([3*d,3*d]);c.lineWidth=d;
+  PT.forEach(p=>{const [a,b]=S(p.x,p.z);c.beginPath();c.arc(a,b,7*d,0,6.283);c.stroke()});
+  CT.forEach(k=>{const [a,b]=S(k.x,k.z);c.beginPath();c.arc(a,b,10*d,0,6.283);c.stroke()});c.setLineDash([])}
+ // points
+ pts.forEach((p,i)=>{const [a,b]=S(p.x,p.z),g=PT[i].g;
+  if(g){c.beginPath();c.moveTo(a,b-7*d);c.lineTo(a+6.5*d,b+5*d);c.lineTo(a-6.5*d,b+5*d);c.closePath();
+   if(useGCP){c.fillStyle='#7ccf6e';c.fill()}else{c.strokeStyle='#7ccf6e';c.lineWidth=1.6*d;c.stroke()}}
+  else{c.beginPath();c.arc(a,b,4.5*d,0,6.283);c.fillStyle='#e6eef0';c.fill()}
+  c.fillStyle=g?'#7ccf6e':'#e6eef0';c.textAlign='center';c.fillText(PT[i].lab+(g&&!useGCP?' (free)':''),a,b+15*d)});
+ // cameras
+ cams.forEach((k,i)=>{const [a,b]=S(k.x,k.z),s=Math.sin(k.t),co=Math.cos(k.t);
+  const q=(lat,dep)=>S(k.x+lat*co+dep*s,k.z+lat*s-dep*co);
+  const p1=q(-1.4,1.6),p2=q(1.4,1.6);c.beginPath();c.moveTo(a,b);c.lineTo(p1[0],p1[1]);c.lineTo(p2[0],p2[1]);c.closePath();c.fillStyle=COLS[i];c.fill();
+  c.beginPath();c.arc(a,b,6*d,0,6.283);c.fill();c.fillStyle='#0b1114';c.textAlign='center';c.font=`700 ${10*d}px "IBM Plex Mono",monospace`;c.fillText(CAMN[i],a,b+.5*d);
+  c.font=`500 ${11*d}px "IBM Plex Mono",monospace`});
+ c.textAlign='left';
+ // sensor strips
+ const top=view.sceneH+6*d,rowH=(H-top-10*d)/5,x0=(W<640*d?32:44)*d,x1=W-(W<640*d?70:96)*d,mid=(x0+x1)/2,ps=(x1-x0)/(2*HALF);
+ c.fillStyle='rgba(219,230,232,.75)';c.fillText(W<640*d?'Measured (●) vs predicted (○), pixels':'What each camera measured (●) vs what the current model predicts (○), in pixels',12*d,top+rowH*.45);
+ const rs=resid();
+ for(let ci=0;ci<4;ci++){const y=top+rowH*(ci+1)+rowH*.45;
+  c.fillStyle=COLS[ci];c.font=`700 ${12*d}px "IBM Plex Mono",monospace`;c.fillText(CAMN[ci],18*d,y);c.font=`500 ${11*d}px "IBM Plex Mono",monospace`;
+  c.strokeStyle='rgba(219,230,232,.28)';c.lineWidth=d;c.beginPath();c.moveTo(x0,y);c.lineTo(x1,y);c.moveTo(mid,y-5*d);c.lineTo(mid,y+5*d);c.moveTo(x0,y-4*d);c.lineTo(x0,y+4*d);c.moveTo(x1,y-4*d);c.lineTo(x1,y+4*d);c.stroke();
+  let se=0,nn=0;
+  OBS.forEach((o,k)=>{if(o.c!==ci)return;const pu=pred(o),ox=mid+o.u*ps;se+=rs[k]*rs[k];nn++;
+   const px=Number.isFinite(pu)?Math.max(x0-8*d,Math.min(x1+8*d,mid+pu*ps)):ox;
+   if(Math.abs(px-ox)>.6*d){c.strokeStyle='#ff5c6c';c.lineWidth=2.2*d;c.beginPath();c.moveTo(ox,y);c.lineTo(px,y);c.stroke()}
+   c.fillStyle='#e6eef0';c.beginPath();c.arc(ox,y,3.2*d,0,6.283);c.fill();
+   c.strokeStyle=COLS[ci];c.lineWidth=1.6*d;c.beginPath();c.arc(px,y,5.5*d,0,6.283);c.stroke();
+   c.fillStyle='rgba(219,230,232,.6)';c.textAlign='center';c.fillText(PT[o.p].lab,ox,y-11*d);c.textAlign='left'});
+  const e=Math.sqrt(se/nn);c.fillStyle=e>2?'#ff8f9a':'rgba(219,230,232,.75)';c.fillText(`${e<10?e.toFixed(2):e.toFixed(0)} px`,x1+12*d,y)}
+ drawChart();stats()}
+function drawChart(){
+ const r=chC.getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1),w=Math.round(r.width*d),h=Math.round(r.height*d);if(!w)return;
+ if(chC.width!==w||chC.height!==h){chC.width=w;chC.height=h}
+ const c=chx,ink=tok('--muted'),line=tok('--line'),acc=tok('--accent');c.clearRect(0,0,w,h);
+ const l=40*d,rr=8*d,t=8*d,b=20*d,lo=-1,hi=3,ly=v=>t+(h-t-b)*(1-(Math.log10(Math.max(v,.1))-lo)/(hi-lo));
+ const nx=Math.max(10,hist.length-1),lx=i=>l+(w-l-rr)*i/nx;
+ c.font=`400 ${10*d}px "IBM Plex Mono",monospace`;c.textBaseline='middle';c.textAlign='right';
+ [.1,1,10,100,1000].forEach(v=>{const y=ly(v);c.strokeStyle=line;c.lineWidth=d;c.beginPath();c.moveTo(l,y);c.lineTo(w-rr,y);c.stroke();c.fillStyle=ink;c.fillText(v>=1?String(v):'0.1',l-6*d,y)});
+ c.textAlign='left';c.fillStyle=ink;c.fillText('iteration →',l,h-7*d);c.textAlign='right';c.fillText('RMS px, log scale',w-rr,h-7*d);
+ c.strokeStyle=acc;c.lineWidth=2*d;c.beginPath();hist.forEach((v,i)=>{const x=lx(i),y=ly(v);i?c.lineTo(x,y):c.moveTo(x,y)});c.stroke();
+ c.fillStyle=acc;hist.forEach((v,i)=>{c.beginPath();c.arc(lx(i),ly(v),2.6*d,0,6.283);c.fill()});
+}
+function stats(){const r=resid(),e=Math.sqrt(cost(r)/r.length),mx=Math.max(...r.map(Math.abs));
+ $('#baStats').innerHTML=[['Unknowns solved for',params().length],['Image measurements',OBS.length],['Iteration',iter],['RMS reprojection error',e.toFixed(2)+' px'],['Worst single error',mx.toFixed(1)+' px'],['Point position error vs truth',posErr().toFixed(2)+' m']].map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('');
+ $('#baStatus').textContent=status;$('#baSolve').textContent=solving?'Pause':'Run adjustment'}
+
+/* ---------- interaction ---------- */
+function resize(){const r=cv.getBoundingClientRect();DPR=Math.min(2,devicePixelRatio||1);W=Math.round(r.width*DPR);H=Math.round(r.height*DPR);if(!W)return;cv.width=W;cv.height=H;draw()}
+new ResizeObserver(resize).observe(cv);new ResizeObserver(()=>drawChart()).observe(chC);
+let drag=null;
+function pick(e){const r=cv.getBoundingClientRect(),sx=(e.clientX-r.left)*DPR,sy=(e.clientY-r.top)*DPR;let best=null,bd=16*DPR;
+ cams.forEach(k=>{const [a,b]=S(k.x,k.z),dd=Math.hypot(a-sx,b-sy);if(dd<bd){bd=dd;best=k}});
+ pts.forEach((p,i)=>{if(useGCP&&PT[i].g)return;const [a,b]=S(p.x,p.z),dd=Math.hypot(a-sx,b-sy);if(dd<bd){bd=dd;best=p}});return{best,sx,sy}}
+cv.addEventListener('pointerdown',e=>{const {best}=pick(e);if(!best)return;drag=best;solving=false;cv.classList.add('dragging');cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag){const {best}=pick(e);cv.style.cursor=best?'grab':'default';return}
+ const r=cv.getBoundingClientRect(),[x,z]=Wd((e.clientX-r.left)*DPR,(e.clientY-r.top)*DPR);drag.x=Math.max(-3,Math.min(69,x));drag.z=Math.max(-3,Math.min(45,z));status='Model changed by hand.';draw()});
+const end=()=>{if(drag){drag=null;cv.classList.remove('dragging');iter=0;lambda=1e-3;hist=[rms()];draw()}};
+cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+$('#baScr').onclick=()=>{reset(true)};
+$('#baStep').onclick=()=>{solving=false;step()};
+$('#baSolve').onclick=()=>{if(solving){solving=false;status='Paused.';draw();return}solving=true;if(iter>0&&status.startsWith('Converged')){iter=0;hist=[rms()]}lastStep=0;draw()};
+$('#baGCP').onchange=e=>{useGCP=e.target.checked;if(useGCP)pinGCP();iter=0;lambda=1e-3;hist=[rms()];status=useGCP?'G1 and G2 fixed at surveyed coordinates.':'G1 and G2 are now ordinary tie points.';draw()};
+$('#baTruth').onchange=draw;
+function loop(ts){if(solving&&!sec.hidden&&ts-lastStep>320){lastStep=ts;step();if(iter>=60){solving=false;status='Stopped after 60 iterations.'}}requestAnimationFrame(loop)}
+new MutationObserver(()=>{if(!sec.hidden)resize()}).observe(sec,{attributes:true,attributeFilter:['hidden']});
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+reset(true);requestAnimationFrame(loop);
 })();
 </script>
 </body>

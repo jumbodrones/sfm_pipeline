@@ -2,13 +2,18 @@
 
 An interactive, browser-based lab that walks students through the drone photogrammetry pipeline. It shows how overlapping photos become a 3D point cloud and then an orthomosaic using Structure from Motion (SfM).
 
+**Live page:** https://YOUR-USERNAME.github.io/REPO-NAME/
+
 ## What it covers
 
 The page follows one simulated survey flight through six steps:
 
 1. **Capture:** plan a lawnmower flight and adjust altitude, front overlap and side overlap. See the photo footprints, an overlap-count map, photo spacing and ground sample distance (GSD).
-2. **Match:** feature detection (for example with SIFT) and tie points. Rays link one ground point to every camera that photographed it.
-3. **Align:** triangulation and bundle adjustment. Camera poses and the sparse point cloud settle as the reprojection error falls.
+2. **Match:** feature detection (for example with the SIFT algorithm) and tie points. Rays link one ground point to every camera that photographed it.
+3. **Align:** triangulation and bundle adjustment. Camera poses and the sparse point cloud settle as the reprojection error falls. This step includes a **bundle adjustment close-up**, a 2D cross-section students can interact with:
+   - Drag cameras and points to break the model, then run the Levenberg–Marquardt solver one iteration at a time or until it converges.
+   - Watch the rays converge and the reprojection error per camera fall.
+   - Switch ground control points on and off to see why GCPs are needed for real-world accuracy.
 4. **Densify:** multi-view stereo builds a dense point cloud.
 5. **Surface:** a Digital Surface Model (DSM), shown by elevation or in true colour.
 6. **Orthomosaic:** a raw perspective photo next to the orthomosaic, showing relief displacement (d = r · h / H) and mosaic seamlines.
@@ -37,4 +42,3 @@ Jon Caris, Tufts University. Developed with assistance from Claude (Anthropic).
 ## License
 
 Add a license of your choice, for example CC BY 4.0 for the teaching content or MIT for the code.
-
